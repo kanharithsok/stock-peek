@@ -45,9 +45,6 @@ later:
 brew upgrade --cask stock-peek
 ```
 
-> The Homebrew cask currently points at the previous MacStockWidget 1.0.0
-> release. It will be updated to Stock Peek with the next release.
-
 ## Build and run
 
 ```bash
