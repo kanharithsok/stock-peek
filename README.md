@@ -72,9 +72,24 @@ To create a release zip for a GitHub release:
 
 ## Usage
 
-1. Launch the app — a chart icon appears in the menu bar.
+1. Launch the app — a chart icon appears in the menu bar. There is no Dock
+   icon or main window; the app lives entirely in the menu bar.
 2. Click the icon and search for a ticker symbol (for example `AAPL`) to add it.
 3. Open Settings to change the refresh interval or enable launch at login.
+
+## Troubleshooting
+
+If macOS blocks the app, or clicking **Open Anyway** appears to do nothing,
+clear the quarantine flag and any stuck launch process:
+
+```bash
+pkill -9 -f '/Applications/MacStockWidget.app/Contents/MacOS/MacStockWidget'
+xattr -dr com.apple.quarantine /Applications/MacStockWidget.app
+open /Applications/MacStockWidget.app
+```
+
+Then look for the chart icon in the menu bar. If the launch process was stuck
+at startup, a reboot also clears it.
 
 ## Project structure
 
