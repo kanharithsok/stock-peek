@@ -90,10 +90,11 @@ final class Store: ObservableObject {
             isSearching = false
             return
         }
+        searchResults = []
+        isSearching = true
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            isSearching = true
             let results = (try? await client.search(query: trimmed)) ?? []
             guard !Task.isCancelled else { return }
             searchResults = results

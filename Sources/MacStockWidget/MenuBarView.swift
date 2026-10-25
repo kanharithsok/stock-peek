@@ -21,6 +21,9 @@ struct MenuBarView: View {
         .onChange(of: store.watchlist.count) {
             MacStockWidgetApp.fitPanelToContent()
         }
+        .onDisappear {
+            store.clearSearch()
+        }
     }
 }
 
@@ -80,57 +83,76 @@ private struct QuoteListView: View {
 
     private var quoteRows: some View {
         ForEach(store.watchlist, id: \.self) { symbol in
-            if let quote = store.quotes[symbol] {
-                QuoteRow(quote: quote) {
-                    store.remove(symbol: symbol)
-                }
+            QuoteRow(
+                symbol: symbol,
+                quote: store.quotes[symbol],
+                isLoading: store.isRefreshing
+            ) {
+                store.remove(symbol: symbol)
             }
         }
     }
 }
 
 private struct QuoteRow: View {
-    let quote: Quote
+    let symbol: String
+    let quote: Quote?
+    let isLoading: Bool
     let onRemove: () -> Void
 
-    private var change: Double {
-        quote.regularMarketChange ?? 0
+    @State private var isHovering = false
+
+    private var change: Double? {
+        quote?.regularMarketChange
     }
 
-    private var changePercent: Double {
-        quote.regularMarketChangePercent ?? 0
+    private var changePercent: Double? {
+        quote?.regularMarketChangePercent
     }
 
     private var color: Color {
-        change >= 0 ? .green : .red
+        guard let change, change != 0 else { return .secondary }
+        return change > 0 ? .green : .red
+    }
+
+    private var directionSymbol: String {
+        guard let change, change != 0 else { return "minus" }
+        return change > 0 ? "arrow.up.right" : "arrow.down.right"
+    }
+
+    private var displayName: String {
+        if let quote {
+            return quote.displayName
+        }
+        return isLoading ? "Loading…" : "No quote data"
     }
 
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
-                    Text(quote.symbol)
+                    Text(symbol)
                         .font(.system(.callout, design: .rounded).weight(.semibold))
                         .monospacedDigit()
-                    if let marketState = quote.marketState, marketState != "REGULAR" {
+                    if let marketState = quote?.marketState, marketState != "REGULAR" {
                         Text(badge(for: marketState))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
-                Text(quote.displayName)
+                Text(displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
                 Text(priceText)
                     .font(.system(.callout, design: .rounded).weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(color)
                 HStack(spacing: 3) {
-                    Image(systemName: change >= 0 ? "arrow.up.right" : "arrow.down.right")
+                    Image(systemName: directionSymbol)
                         .font(.caption2)
                     Text(changeText)
                         .font(.caption)
@@ -142,26 +164,54 @@ private struct QuoteRow: View {
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 20, height: 20)
                     .background(.quaternary.opacity(0.5), in: Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .help("Remove \(quote.symbol)")
+            .help("Remove \(symbol)")
+            .accessibilityLabel("Remove \(symbol)")
         }
         .padding(.vertical, 5)
         .padding(.horizontal, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+        }
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .help(quote?.displayName ?? symbol)
+        .contextMenu {
+            if let url = yahooURL(for: symbol) {
+                Button("Open in Yahoo Finance") {
+                    NSWorkspace.shared.open(url)
+                }
+                Divider()
+            }
+            Button("Remove \(symbol)", role: .destructive, action: onRemove)
+        }
     }
 
     private var priceText: String {
-        guard let price = quote.regularMarketPrice else { return "--" }
+        guard let quote, let price = quote.regularMarketPrice else { return "—" }
+        if let currency = quote.currency, !currency.isEmpty {
+            return price.formatted(.currency(code: currency).precision(.fractionLength(2)))
+        }
         return price.formatted(.number.precision(.fractionLength(2)))
     }
 
     private var changeText: String {
-        guard let change = quote.regularMarketChange,
-              let percent = quote.regularMarketChangePercent else { return "--" }
-        let sign = change >= 0 ? "+" : ""
+        guard let change, let percent = changePercent else { return "—" }
+        let sign = change > 0 ? "+" : ""
         return "\(sign)\(change.formatted(.number.precision(.fractionLength(2))))  (\(sign)\(percent.formatted(.number.precision(.fractionLength(2))))%)"
+    }
+
+    private func yahooURL(for symbol: String) -> URL? {
+        guard let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            return nil
+        }
+        return URL(string: "https://finance.yahoo.com/quote/\(encoded)")
     }
 
     private func badge(for state: String) -> String {
@@ -176,6 +226,11 @@ private struct QuoteRow: View {
 
 private struct SearchSection: View {
     @ObservedObject var store: Store
+    @FocusState private var isSearchFocused: Bool
+
+    private var trimmedQuery: String {
+        store.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -186,9 +241,29 @@ private struct SearchSection: View {
                 TextField("Search stocks (e.g. AAPL)", text: $store.searchQuery)
                     .textFieldStyle(.plain)
                     .font(.callout)
+                    .focused($isSearchFocused)
+                    .accessibilityLabel("Search stocks")
                     .onChange(of: store.searchQuery) { _, newValue in
                         store.search(newValue)
                     }
+                    .onSubmit {
+                        if let first = store.searchResults.first,
+                           !store.watchlist.contains(first.symbol) {
+                            store.add(first)
+                        }
+                    }
+                if !store.searchQuery.isEmpty {
+                    Button {
+                        store.clearSearch()
+                        isSearchFocused = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
                 if store.isSearching {
                     ProgressView()
                         .controlSize(.small)
@@ -199,14 +274,38 @@ private struct SearchSection: View {
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
 
             if !store.searchResults.isEmpty {
-                ForEach(store.searchResults) { result in
-                    SearchResultRow(result: result, isAdded: store.watchlist.contains(result.symbol)) {
-                        store.add(result)
+                if store.searchResults.count > 4 {
+                    ScrollView {
+                        resultRows
                     }
+                    .frame(height: 176)
+                    .scrollIndicators(.visible)
+                } else {
+                    resultRows
                 }
+            } else if !trimmedQuery.isEmpty && !store.isSearching {
+                Text("No matching symbols")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var resultRows: some View {
+        VStack(spacing: 0) {
+            ForEach(store.searchResults) { result in
+                SearchResultRow(
+                    result: result,
+                    isAdded: store.watchlist.contains(result.symbol)
+                ) {
+                    store.add(result)
+                }
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -215,13 +314,28 @@ private struct SearchResultRow: View {
     let isAdded: Bool
     let onAdd: () -> Void
 
+    @State private var isHovering = false
+
+    private var exchange: String? {
+        let value = result.exchDisp ?? result.exchange
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+
     var body: some View {
         Button(action: onAdd) {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(result.symbol)
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                        .monospacedDigit()
+                    HStack(spacing: 4) {
+                        Text(result.symbol)
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .monospacedDigit()
+                        if let exchange {
+                            Text(exchange)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                     Text(result.name)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -240,9 +354,17 @@ private struct SearchResultRow: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isHovering ? Color.primary.opacity(0.05) : .clear)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isAdded)
+        .onHover { isHovering = $0 }
+        .help(isAdded ? "\(result.symbol) is already in your watchlist" : "Add \(result.symbol)")
+        .accessibilityLabel("\(result.symbol), \(result.name)\(isAdded ? ", already added" : "")")
     }
 }
 
@@ -266,29 +388,51 @@ private struct StatusFooter: View {
                 Text(updatedText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             Spacer()
             Button {
                 openSettings()
+                MacStockWidgetApp.bringSettingsToFront()
             } label: {
                 Image(systemName: "gearshape")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Settings")
+            .accessibilityLabel("Settings")
             Button {
                 Task { await store.refresh() }
             } label: {
-                Image(systemName: "arrow.clockwise")
+                Group {
+                    if store.isRefreshing {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(store.isRefreshing)
+            .help("Refresh now")
+            .accessibilityLabel("Refresh quotes")
             Button {
                 NSApp.terminate(nil)
             } label: {
                 Image(systemName: "power")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Quit")
+            .help("Quit Stock Widget")
+            .accessibilityLabel("Quit Stock Widget")
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
