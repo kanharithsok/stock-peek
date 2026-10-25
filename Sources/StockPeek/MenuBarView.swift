@@ -19,7 +19,7 @@ struct MenuBarView: View {
         .frame(width: 340)
         .padding(8)
         .onChange(of: store.watchlist.count) {
-            MacStockWidgetApp.fitPanelToContent()
+            StockPeekApp.fitPanelToContent()
         }
         .onDisappear {
             store.clearSearch()
@@ -86,10 +86,17 @@ private struct QuoteListView: View {
             QuoteRow(
                 symbol: symbol,
                 quote: store.quotes[symbol],
-                isLoading: store.isRefreshing
-            ) {
-                store.remove(symbol: symbol)
-            }
+                isLoading: store.isRefreshing,
+                onRemove: {
+                    store.remove(symbol: symbol)
+                },
+                onMove: { offset in
+                    store.move(symbol: symbol, by: offset)
+                },
+                onReorder: { draggedSymbol, after in
+                    store.move(symbol: draggedSymbol, to: symbol, after: after)
+                }
+            )
         }
     }
 }
@@ -99,8 +106,11 @@ private struct QuoteRow: View {
     let quote: Quote?
     let isLoading: Bool
     let onRemove: () -> Void
+    let onMove: (Int) -> Void
+    let onReorder: (String, Bool) -> Void
 
     @State private var isHovering = false
+    @State private var isDropTargeted = false
 
     private var change: Double? {
         quote?.regularMarketChange
@@ -129,6 +139,13 @@ private struct QuoteRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .opacity(isHovering ? 0.9 : 0.35)
+                .frame(width: 10, height: 20)
+                .help("Drag to reorder")
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(symbol)
@@ -176,11 +193,39 @@ private struct QuoteRow: View {
         .padding(.horizontal, 6)
         .background {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+                .fill(isDropTargeted
+                      ? Color.accentColor.opacity(0.10)
+                      : (isHovering ? Color.primary.opacity(0.08) : .clear))
+        }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(0.65), lineWidth: 1)
+            }
         }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
+        .animation(.easeOut(duration: 0.12), value: isDropTargeted)
+        .draggable(symbol) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundStyle(.secondary)
+                Text(symbol)
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .dropDestination(for: String.self) { items, location in
+            guard let draggedSymbol = items.first, draggedSymbol != symbol else { return false }
+            onReorder(draggedSymbol, location.y > 23)
+            return true
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
         .help(quote?.displayName ?? symbol)
         .contextMenu {
             if let url = yahooURL(for: symbol) {
@@ -190,6 +235,12 @@ private struct QuoteRow: View {
                 Divider()
             }
             Button("Remove \(symbol)", role: .destructive, action: onRemove)
+        }
+        .accessibilityAction(named: "Move Up") {
+            onMove(-1)
+        }
+        .accessibilityAction(named: "Move Down") {
+            onMove(1)
         }
     }
 
@@ -393,7 +444,7 @@ private struct StatusFooter: View {
             Spacer()
             Button {
                 openSettings()
-                MacStockWidgetApp.bringSettingsToFront()
+                StockPeekApp.bringSettingsToFront()
             } label: {
                 Image(systemName: "gearshape")
                     .foregroundStyle(.secondary)
@@ -431,8 +482,8 @@ private struct StatusFooter: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Quit Stock Widget")
-            .accessibilityLabel("Quit Stock Widget")
+            .help("Quit Stock Peek")
+            .accessibilityLabel("Quit Stock Peek")
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

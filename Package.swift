@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacStockWidget",
+    name: "StockPeek",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "MacStockWidget",
-            path: "Sources/MacStockWidget"
+            name: "StockPeek",
+            path: "Sources/StockPeek"
         )
     ]
 )

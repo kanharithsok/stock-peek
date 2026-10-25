@@ -28,6 +28,7 @@ final class SettingsStore: ObservableObject {
     @Published var launchAtLoginError: String?
 
     init() {
+        LegacyMigration.runIfNeeded()
         isLaunchAtLogin = SMAppService.mainApp.status == .enabled
     }
 

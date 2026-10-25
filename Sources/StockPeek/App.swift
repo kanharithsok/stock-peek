@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct MacStockWidgetApp: App {
+struct StockPeekApp: App {
     @StateObject private var store = Store()
     @StateObject private var settings = SettingsStore()
 
@@ -71,7 +71,7 @@ struct MacStockWidgetApp: App {
             MenuBarView(store: store)
         } label: {
             Image(systemName: "chart.line.uptrend.xyaxis")
-                .accessibilityLabel("Stock Widget")
+                .accessibilityLabel("Stock Peek")
         }
         .menuBarExtraStyle(.window)
 

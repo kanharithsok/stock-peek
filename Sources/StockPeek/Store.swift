@@ -24,6 +24,7 @@ final class Store: ObservableObject {
     @AppStorage("refreshInterval") private var refreshInterval: Double = 30
 
     init() {
+        LegacyMigration.runIfNeeded()
         loadWatchlist()
         loadCachedQuotes()
         startTimer()
@@ -72,6 +73,43 @@ final class Store: ObservableObject {
         quotes[symbol] = nil
         persistWatchlist()
         persistQuotes()
+    }
+
+    func move(symbol: String, to target: String, after: Bool) {
+        guard symbol != target,
+              let from = watchlist.firstIndex(of: symbol),
+              let targetIndex = watchlist.firstIndex(of: target) else { return }
+
+        var updated = watchlist
+        updated.remove(at: from)
+
+        var insertionIndex = targetIndex
+        if from < targetIndex {
+            insertionIndex -= 1
+        }
+        if after {
+            insertionIndex += 1
+        }
+        guard insertionIndex <= updated.endIndex else { return }
+
+        updated.insert(symbol, at: insertionIndex)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            watchlist = updated
+        }
+        persistWatchlist()
+    }
+
+    func move(symbol: String, by offset: Int) {
+        guard let index = watchlist.firstIndex(of: symbol) else { return }
+        let targetIndex = index + offset
+        guard watchlist.indices.contains(targetIndex) else { return }
+
+        var updated = watchlist
+        updated.swapAt(index, targetIndex)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            watchlist = updated
+        }
+        persistWatchlist()
     }
 
     func removeAll() {
