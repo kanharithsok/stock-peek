@@ -22,12 +22,13 @@ A lightweight macOS menu bar app for tracking stock quotes from Yahoo Finance.
 ### Homebrew
 
 ```bash
-brew install --cask kanharithsok/tap/stock-peek
+brew tap kanharithsok/tap
+brew trust kanharithsok/tap
+brew install --cask stock-peek
 ```
 
-The first install automatically taps
-[`kanharithsok/homebrew-tap`](https://github.com/kanharithsok/homebrew-tap).
-To upgrade later:
+Homebrew 7 requires new third-party taps to be trusted explicitly. To upgrade
+later:
 
 ```bash
 brew upgrade --cask stock-peek
