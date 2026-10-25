@@ -15,7 +15,33 @@ A lightweight macOS menu bar app for tracking stock quotes from Yahoo Finance.
 ## Requirements
 
 - macOS 14 (Sonoma) or later
-- Swift 6.0 / Xcode 16 or later
+- Swift 6.0 / Xcode 16 or later (only needed to build from source)
+
+## Install
+
+### Homebrew
+
+```bash
+brew install --cask kanharithsok/tap/stock-peek
+```
+
+The first install automatically taps
+[`kanharithsok/homebrew-tap`](https://github.com/kanharithsok/homebrew-tap).
+To upgrade later:
+
+```bash
+brew upgrade --cask stock-peek
+```
+
+### From source
+
+```bash
+git clone https://github.com/kanharithsok/stock-peek.git
+cd stock-peek
+./scripts/install.sh
+```
+
+`install.sh` builds the app and copies it to `/Applications`.
 
 ## Build and run
 
@@ -35,6 +61,12 @@ To build and install into `/Applications`:
 
 ```bash
 ./scripts/install.sh
+```
+
+To create a release zip for a GitHub release:
+
+```bash
+./scripts/package_release.sh
 ```
 
 ## Usage
